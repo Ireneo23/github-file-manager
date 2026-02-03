@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cloud Notepad</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f4f6f8;
+      margin: 0;
+      padding: 0;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      background-color: #ffffff;
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+
+    h1 {
+      margin-bottom: 16px;
+      font-size: 22px;
+      text-align: center;
+    }
+
+    .controls {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      padding: 10px;
+      font-size: 14px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      padding: 10px 16px;
+      font-size: 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button.load {
+      background-color: #4a90e2;
+      color: #ffffff;
+    }
+
+    button.save {
+      background-color: #27ae60;
+      color: #ffffff;
+    }
+
+    button.clear {
+      background-color: #e74c3c;
+      color: #ffffff;
+    }
+
+    textarea {
+      width: 100%;
+      height: 350px;
+      margin-top: 12px;
+      padding: 12px;
+      font-size: 14px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      resize: vertical;
+    }
+
+    .status {
+      margin-top: 12px;
+      font-size: 14px;
+      min-height: 18px;
+    }
+
+    .success {
+      color: #27ae60;
+    }
+
+    .error {
+      color: #e74c3c;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>Cloud Notepad</h1>
+
+    <div class="controls">
+      <input type="text" id="fileName" placeholder="Enter file name. Example: notes.txt">
+      <button class="load" onclick="loadFile()">Load File</button>
+      <button class="save" onclick="saveFile()">Save File</button>
+      <button class="clear" onclick="clearText()">Clear Text</button>
+    </div>
+
+    <textarea id="editor" placeholder="Write your notes here..."></textarea>
+
+    <div id="status" class="status"></div>
+  </div>
+
+  <script>
+    /* ===== REPLACE THESE VALUES ===== */
+    const GITHUB_OWNER = process.env.GITHUB_USER;
+    const GITHUB_REPO = process.env.GITHUB_REPO;
+    const GITHUB_PATH = process.env.GITHUB_PATH || "";
+    const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
+    /* =============================== */
+
+    let currentFileSha = null;
+
+    const statusBox = document.getElementById("status");
+    const editor = document.getElementById("editor");
+
+    function setStatus(message, type) {
+      statusBox.textContent = message;
+      statusBox.className = "status " + type;
+    }
+
+    async function loadFile() {
+      const fileName = document.getElementById("fileName").value.trim();
+
+      if (!fileName) {
+        setStatus("File name required.", "error");
+        return;
+      }
+
+      setStatus("Loading file...", "");
+
+      const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}/${fileName}`;
+
+      try {
+        const response = await fetch(url, {
+          headers: {
+            Authorization: `token ${GITHUB_TOKEN}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error("File not found.");
+        }
+
+        const data = await response.json();
+        const decodedContent = atob(data.content.replace(/\n/g, ""));
+
+        editor.value = decodedContent;
+        currentFileSha = data.sha;
+
+        setStatus("File loaded successfully.", "success");
+      } catch (error) {
+        editor.value = "";
+        currentFileSha = null;
+        setStatus(error.message, "error");
+      }
+    }
+
+    async function saveFile() {
+      const fileName = document.getElementById("fileName").value.trim();
+      const content = editor.value;
+
+      if (!fileName) {
+        setStatus("File name required.", "error");
+        return;
+      }
+
+      setStatus("Saving file...", "");
+
+      const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${GITHUB_PATH}/${fileName}`;
+      const encodedContent = btoa(content);
+
+      const body = {
+        message: "Update file via Cloud Notepad",
+        content: encodedContent
+      };
+
+      if (currentFileSha) {
+        body.sha = currentFileSha;
+      }
+
+      try {
+        const response = await fetch(url, {
+          method: "PUT",
+          headers: {
+            Authorization: `token ${GITHUB_TOKEN}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(body)
+        });
+
+        if (!response.ok) {
+          throw new Error("Save failed.");
+        }
+
+        const data = await response.json();
+        currentFileSha = data.content.sha;
+
+        setStatus("File saved successfully.", "success");
+      } catch (error) {
+        setStatus(error.message, "error");
+      }
+    }
+
+    function clearText() {
+      editor.value = "";
+      setStatus("Text cleared.", "success");
+    }
+  </script>
+</body>
+</html>
